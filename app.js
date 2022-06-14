@@ -3,6 +3,8 @@ const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
 const path = require("path");
 const format = require("date-fns/format");
+const isValid = require("date-fns/isValid");
+const isMatch = require("date-fns/isMatch");
 const app = express();
 
 let db = null;
@@ -24,17 +26,6 @@ const initializeDbAndServer = async () => {
 };
 
 initializeDbAndServer();
-
-const convertTodoDbToResponseObject = (dbObject) => {
-  return {
-    id: dbObject.id,
-    todo: dbObject.todo,
-    category: dbObject.category,
-    priority: dbObject.priority,
-    status: dbObject.status,
-    dueDate: dbObject.due_date,
-  };
-};
 
 const hasPriorityAndStatusProperties = (requestQuery) => {
   return (
@@ -68,83 +59,145 @@ const hasCategoryProperties = (requestQuery) => {
 
 app.get("/todos/", async (request, response) => {
   let data = null;
-  let getTodoQuery = "";
+  let getTodosQuery = "";
   const { search_q = "", priority, status, category } = request.query;
 
   switch (true) {
     case hasPriorityAndStatusProperties(request.query):
-      getTodoQuery = `
-      SELECT 
-        *
-      FROM 
-        todo 
-      WHERE 
-        todo LIKE '%${search_q}%,
-        priority = '${priority}',
-        status = '${status}';`;
+      if (priority === "HIGH" || priority === "MEDIUM" || priority === "LOW") {
+        if (
+          status === "TO DO" ||
+          status === "IN PROGRESS" ||
+          status === "DONE"
+        ) {
+          getTodosQuery = `
+          SELECT 
+            * 
+          FROM 
+            todo  
+          WHERE 
+            todo LIKE '%${search_q}%' 
+            AND status = '${status}' 
+            AND priority = '${priority}';`;
+        } else {
+          response.status(400);
+          response.send("Invalid Todo Status");
+        }
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Priority");
+      }
       break;
+
     case hasPriorityAndCategoryProperties(request.query):
-      getTodoQuery = `
-      SELECT 
-        *
-      FROM 
-        todo 
-      WHERE 
-        todo LIKE '%${search_q}%,
-        priority = '${priority}',
-        category = '${category}';`;
+      if (priority === "HIGH" || priority === "MEDIUM" || priority === "LOW") {
+        if (
+          category === "WORK" ||
+          category === "HOME" ||
+          category === "LEARNING"
+        ) {
+          getTodosQuery = `
+          SELECT 
+            * 
+          FROM 
+            todo  
+          WHERE 
+            todo LIKE '%${search_q}%' 
+            AND priority = '${priority}'
+            AND category ='${category}';`;
+        } else {
+          response.status(400);
+          request.send("Invalid Todo Category");
+        }
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Priority");
+      }
       break;
     case hasCategoryAndStatusProperties(request.query):
-      getTodoQuery = `
-      SELECT 
-        *
-      FROM 
-        todo 
-      WHERE 
-        todo LIKE '%${search_q}%,
-        status = '${status}',
-        category = '${category}';`;
-      break;
-    case hasStatusProperties(request.query):
-      getTodoQuery = `
+      if (status === "TO DO" || status === "IN PROGRESS" || status === "DONE") {
+        if (
+          category === "WORK" ||
+          category === "HOME" ||
+          category === "LEARNING"
+        ) {
+          getTodosQuery = `
           SELECT 
-            *
+            * 
           FROM 
-            todo 
+            todo  
           WHERE 
-            todo LIKE '%${search_q}%,
-            status = '${status}';`;
+            todo LIKE '%${search_q}%' 
+            AND status = '${status}'
+            AND category ='${category}';`;
+        } else {
+          response.status(400);
+          request.send("Invalid Todo Category");
+        }
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Status");
+      }
       break;
     case hasPriorityProperties(request.query):
-      getTodoQuery = `
-      SELECT 
-        *
-      FROM 
-        todo 
-      WHERE 
-        todo LIKE '%${search_q}%,
-        priority = '${priority}',`;
+      if (priority === "HIGH" || priority === "MEDIUM" || priority === "LOW") {
+        getTodosQuery = `
+          SELECT 
+            * 
+          FROM 
+            todo  
+          WHERE 
+            todo LIKE '%${search_q}%' 
+            AND priority = '${priority}';`;
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Priority");
+      }
+      break;
+    case hasStatusProperties(request.query):
+      if (status === "TO DO" || status === "IN PROGRESS" || status === "DONE") {
+        getTodosQuery = `
+          SELECT 
+            * 
+          FROM 
+            todo  
+          WHERE 
+            todo LIKE '%${search_q}%' 
+            AND status = '${status}';`;
+      } else {
+        response.status(400);
+        response.send("Invalid Todo Status");
+      }
       break;
     case hasCategoryProperties(request.query):
-      getTodoQuery = `
-      SELECT 
-        *
-      FROM 
-        todo 
-      WHERE 
-        todo LIKE '%${search_q}%,
-        category = '${category}';`;
+      if (
+        category === "WORK" ||
+        category === "HOME" ||
+        category === "LEARNING"
+      ) {
+        getTodosQuery = `
+          SELECT 
+            * 
+          FROM 
+            todo  
+          WHERE 
+            todo LIKE '%${search_q}%'
+            AND category ='${category}';`;
+      } else {
+        response.status(400);
+        request.send("Invalid Todo Category");
+      }
       break;
     default:
-      getTodoQuery = `
-      SELECT 
-        *
-      FROM 
-        todo 
-      WHERE 
-        todo LIKE '%${search_q}%';`;
+      getTodosQuery = `
+          SELECT 
+            * 
+          FROM 
+            todo  
+          WHERE 
+            todo LIKE '%${search_q}%'`;
   }
-  data = await db.all(getTodoQuery);
+  data = await db.all(getTodosQuery);
   response.send(data);
 });
 
@@ -157,26 +210,32 @@ app.get("/todos/:todoId/", async (request, response) => {
     todo 
   WHERE 
     id = ${todoId};`;
-
   const todoArray = await db.get(getTodoQuery);
   response.send(todoArray);
 });
 
 app.get("/agenda/", async (request, response) => {
-  const date = format(new Date(2021, 01, 22), "yyyy,mm,dd");
-  //const { dueDate } = request.params;
-  const getTodoQuery = `
-    SELECT 
-      * 
-    FROM 
-      todo 
-    WHERE 
-      due_date = ${date};`;
-  const todo = await db.get(getTodoQuery);
-  response.send(todo);
+  const { date } = request.query;
+  console.log(isMatch(date, "yyyy-MM-dd"));
+  if (isMatch(date, "yyyy-mm-dd")) {
+    const newDate = format(new Date(date), "yyyy-mm-dd");
+    console.log(newDate);
+    const getTodoQuery = `
+      SELECT
+        *
+      FROM
+        todo
+      WHERE
+        due_date = ${newDate};`;
+    const todo = await db.all(getTodoQuery);
+    response.send(todo);
+  } else {
+    response.status(400);
+    response.send("Invalid Due Date");
+  }
 });
 
-app.post("/todos/", async (response, request) => {
+app.post("/todos/", async (request, response) => {
   const { id, todo, priority, status, category, dueDate } = request.body;
   const postTodoQuery = `
     INSERT INTO 
@@ -208,7 +267,7 @@ app.put("/todos/:todoId/", async (request, response) => {
       updateColumn = "Category";
       break;
     case requestBody.dueDate !== undefined:
-      updateColumn = "2021-01-12";
+      updateColumn = "Due Date";
       break;
   }
 
@@ -227,7 +286,7 @@ app.put("/todos/:todoId/", async (request, response) => {
     priority = previousTodo.priority,
     status = previousTodo.status,
     category = previousTodo.category,
-    dueDate = previousTodo.dueDate,
+    dueDate = previousTodo.due_date,
   } = request.body;
 
   const updateTodoQuery = `
@@ -238,7 +297,7 @@ app.put("/todos/:todoId/", async (request, response) => {
       priority = '${priority}',
       status = '${status}',
       category = '${category}',
-      due_date = ${dueDate},
+      due_date = ${dueDate}
     WHERE 
       id = ${todoId};`;
 
