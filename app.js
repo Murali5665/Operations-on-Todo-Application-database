@@ -76,9 +76,9 @@ app.get("/todos/", async (request, response) => {
           FROM 
             todo  
           WHERE 
-            todo LIKE '%${search_q}%' 
-            AND status = '${status}' 
-            AND priority = '${priority}';`;
+            todo LIKE '%${search_q}%'  
+            AND priority = '${priority}'
+            AND status = '${status}';`;
         } else {
           response.status(400);
           response.send("Invalid Todo Status");
